@@ -115,18 +115,38 @@ function readStats(obj){
  const out={};for(const [key,names] of Object.entries(labels)){const raw=names.map(n=>obj?.[n]).find(v=>v!==undefined&&v!==null);if(raw===undefined||!Number.isFinite(Number(raw)))return null;out[key]=Number(raw)}return out;
 }
 function parseLog(data){
- // ESPN gamelog includes labels and aligned stats arrays. Never invent missing columns.
- const labels=data.labels||data.names||[];
- const groups=data.events||data.entries||{};
- const rows=Array.isArray(groups)?groups:Object.values(groups).flatMap(v=>Array.isArray(v)?v:[]);
- const result=[];
- for(const row of rows){const vals=row.stats||row.statistics;if(!Array.isArray(vals)||!Array.isArray(labels))continue;
-  const obj={};labels.forEach((name,i)=>obj[String(name).toUpperCase()]=vals[i]);
-  const stats=readStats(obj);if(!stats)continue;
-  const date=row.date||row.gameDate||data.events?.[row.eventId]?.gameDate;
-  if(!date||Number.isNaN(Date.parse(date)))continue;
-  const minutes=Number(obj.MIN);result.push({date:new Date(date),stats,minutes:Number.isFinite(minutes)?minutes:null});
- }return result;
+ // ESPN game logs group entries inside seasonTypes[].categories[].events.
+ // Match event IDs to the separate events dictionary to recover game dates.
+ const result=[],seen=new Set();
+ const eventIndex=data.events&&typeof data.events==='object'&&!Array.isArray(data.events)?data.events:{};
+ const labelSets=[];
+ const findLabels=(node,depth=0)=>{
+  if(!node||typeof node!=='object'||depth>8)return;
+  if(Array.isArray(node)){for(const v of node)findLabels(v,depth+1);return}
+  if(Array.isArray(node.labels)&&node.labels.some(v=>String(v).toUpperCase()==='PTS'))labelSets.push(node.labels);
+  for(const [key,v] of Object.entries(node))if(key!=='events')findLabels(v,depth+1);
+ };
+ findLabels(data);
+ const labels=labelSets.find(v=>v.some(x=>String(x).toUpperCase()==='TO'))||data.labels||[];
+ const extract=(node,depth=0)=>{
+  if(!node||typeof node!=='object'||depth>10)return;
+  if(Array.isArray(node)){for(const v of node)extract(v,depth+1);return}
+  const vals=node.stats||node.statistics;
+  if(Array.isArray(vals)&&vals.length&&labels.length){
+   const obj={};labels.forEach((label,i)=>obj[String(label).toUpperCase()]=vals[i]);
+   const stats=readStats(obj);
+   const eventId=String(node.eventId||node.event?.id||node.id||'');
+   const event=eventIndex[eventId]||{};
+   const rawDate=node.date||node.gameDate||event.gameDate||event.date||event.startDate;
+   if(stats&&rawDate&&!Number.isNaN(Date.parse(rawDate))){
+    const date=new Date(rawDate),key=eventId||date.toISOString().slice(0,10);
+    if(!seen.has(key)){seen.add(key);const rawMin=String(obj.MIN||'');const minutes=rawMin.includes(':')?Number(rawMin.split(':')[0])+Number(rawMin.split(':')[1])/60:Number(rawMin);result.push({date,stats,minutes:rawMin!==''&&Number.isFinite(minutes)?minutes:null})}
+   }
+  }
+  for(const [key,v] of Object.entries(node))if(key!=='stats'&&key!=='statistics'&&key!=='labels'&&key!=='names')extract(v,depth+1);
+ };
+ extract(data.seasonTypes||data);
+ return result.sort((a,b)=>b.date-a.date);
 }
 async function loadAthlete(){
  if(!selectedAthlete){statusPlayer('Select a player using Find player first.');return}
@@ -135,7 +155,7 @@ async function loadAthlete(){
   const season=new Date().getMonth()>=8?new Date().getFullYear()+1:new Date().getFullYear();
   const data=await espnJson('https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/'+encodeURIComponent(id)+'/gamelog?season='+season);
   const rows=parseLog(data).filter(r=>r.date<=new Date());
-  if(!rows.length)throw Error('No compatible dated box-score rows in ESPN response');
+  if(!rows.length)throw Error('ESPN game log has no readable completed games for this season.');
   const cutoff=new Date();cutoff.setDate(cutoff.getDate()-7);
   const recent=rows.filter(r=>r.date>=cutoff);
   const avg=(items,key)=>items.reduce((sum,row)=>sum+row.stats[key],0)/items.length;
