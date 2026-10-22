@@ -27,7 +27,7 @@ ids.forEach(id=>el(id).addEventListener('input',render));el('minus').onclick=()=
 // Four-move weekly planner. Saved per matchup Monday on this device.
 const mondayOf=date=>{const d=new Date(date+'T12:00:00');d.setDate(d.getDate()-((d.getDay()+6)%7));return localDate(d)};
 const localDate=d=>[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');
-const planDefault=()=>({count:2,moves:Array.from({length:4},()=>({date:'',drop:'',pickup:'',lost:'',added:'',oldppg:'',newppg:''}))});
+const planDefault=()=>({count:2,moves:Array.from({length:4},()=>({date:'',drop:'',pickup:'',lost:'',added:'',oldppg:'',newppg:'',autoNote:''}))});
 let plan=planDefault();
 const planKey=()=> 'basketballFourMovePlan_'+el('planWeek').value;
 function loadPlan(){try{plan=JSON.parse(localStorage.getItem(planKey())||'null')||planDefault()}catch(e){plan=planDefault()}el('planCount').value=String(plan.count||2);drawPlan()}
@@ -38,9 +38,71 @@ function drawPlan(){
   const h=document.createElement('h3');h.className='small';h.textContent='Move '+(i+1);wrap.append(h);
   const fields=[['date','Pickup date','date'],['drop','Drop player','text'],['pickup','Pick up player','text'],['lost','Dropped player: remaining usable games lost','number'],['added','Pickup: remaining usable games gained','number'],['oldppg','Dropped player fantasy pts/game','number'],['newppg','Pickup fantasy pts/game','number']];
   for(const [key,title,type] of fields){const label=document.createElement('label');label.textContent=title;label.style.display='block';label.style.margin='8px 0';const input=document.createElement('input');input.type=type;input.value=m[key]??'';if(type==='number'){input.min='0';input.step=key.endsWith('ppg')?'0.1':'1'}if(type==='date'){input.min=el('planWeek').value;const d=new Date(el('planWeek').value+'T12:00:00');d.setDate(d.getDate()+6);input.max=localDate(d)}input.addEventListener('input',()=>{plan.moves[i][key]=input.value;calculatePlan();el('planStatus').textContent='Unsaved changes — tap Save / finish plan.'});label.append(input);wrap.append(label)}
-  root.append(wrap);
+  const auto=document.createElement('button');auto.type='button';auto.className='secondary';auto.textContent='Auto-fill games + fantasy averages';auto.onclick=()=>autoFillMove(i,auto);wrap.append(auto);const note=document.createElement('p');note.className='foot';note.id='autoMoveStatus'+i;note.textContent=m.autoNote||'Uses ESPN team schedules and player game logs.';wrap.append(note);root.append(wrap);
  }calculatePlan();
 }
+// Read roster identities, NBA calendar, and player game logs from existing ESPN feeds.
+const plannerRosterCache=new Map(),plannerLogCache=new Map(),plannerScheduleCache=new Map();
+async function plannerPlayer(name){
+ const query=safeName(name);
+ if(!query)throw Error('Enter both player names first');
+ if(rosterDirectory){const matches=rosterDirectory.filter(p=>safeName(p.name)===query);if(matches.length===1)return matches[0]}
+ const found=[];
+ for(const code of Object.keys(teams)){
+  let players=plannerRosterCache.get(code);
+  if(!players){
+   try{const data=await espnJson('https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/'+code.toLowerCase()+'/roster');
+    players=(data.athletes||[]).flatMap(x=>Array.isArray(x.items)?x.items:[x]).filter(p=>p?.id).map(p=>({id:String(p.id),name:p.displayName||p.fullName||'',team:code}));
+    plannerRosterCache.set(code,players);
+   }catch(e){continue}
+  }
+  found.push(...players.filter(p=>safeName(p.name)===query));
+ }
+ if(found.length!==1)throw Error(found.length?'Ambiguous player name: '+name:'Could not find '+name+' on an NBA roster. Enter the full name.');
+ return found[0];
+}
+async function plannerAverage(player){
+ if(plannerLogCache.has(player.id))return plannerLogCache.get(player.id);
+ const year=new Date().getMonth()>=8?new Date().getFullYear()+1:new Date().getFullYear();
+ const data=await espnJson('https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/'+encodeURIComponent(player.id)+'/gamelog?season='+year);
+ const rows=parseLog(data).filter(r=>r.date<=new Date());
+ if(!rows.length)throw Error('No completed game stats for '+player.name);
+ const ppg=rows.reduce((sum,r)=>sum+Object.entries(weights).reduce((s,[k,w])=>s+r.stats[k]*w,0),0)/rows.length;
+ const result={ppg,played:rows.length};plannerLogCache.set(player.id,result);return result;
+}
+async function plannerWeekGames(week){
+ if(plannerScheduleCache.has(week))return plannerScheduleCache.get(week);
+ const end=shiftDate(week,6),months=[week.slice(0,7).replace('-','')];
+ if(end.slice(0,7)!==week.slice(0,7))months.push(end.slice(0,7).replace('-',''));
+ const results=await Promise.all(months.map(month=>espnJson('https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates='+month+'&limit=600')));
+ const unique=new Map();
+ for(const data of results)for(const event of data.events||[])unique.set(event.id,event);
+ const games=[...unique.values()].map(event=>{
+  const names=(event.competitions?.[0]?.competitors||[]).map(s=>String(s.team?.abbreviation||'').toUpperCase()).map(v=>teamAliases[v]||v);
+  const date=new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(event.date));
+  return {date,teams:names};
+ }).filter(g=>g.date>=week&&g.date<=end);
+ if(!games.length)throw Error('No NBA games returned for this matchup week');
+ plannerScheduleCache.set(week,games);return games;
+}
+async function autoFillMove(i,button){
+ const m=plan.moves[i],status=el('autoMoveStatus'+i);
+ if(!m.date||!m.drop||!m.pickup){status.textContent='Enter a pickup date and both player names first.';return}
+ button.disabled=true;status.textContent='Looking up player teams, schedules, and fantasy averages…';
+ try{
+  const [drop,pickup]=await Promise.all([plannerPlayer(m.drop),plannerPlayer(m.pickup)]);
+  const [oldStats,newStats,games]=await Promise.all([plannerAverage(drop),plannerAverage(pickup),plannerWeekGames(el('planWeek').value)]);
+  // A player dropped later in the same plan contributes only until the later transaction.
+  const next=plan.moves.slice(i+1,Number(plan.count)).filter(x=>x.date&&safeName(x.drop)===safeName(m.pickup)).map(x=>x.date).sort()[0];
+  const start=m.date>endOfWeek(el('planWeek').value)?endOfWeek(el('planWeek').value):m.date;
+  const count=(team,stop)=>new Set(games.filter(g=>g.date>=start&&(!stop||g.date<stop)&&g.teams.includes(team)).map(g=>g.date)).size;
+  m.lost=String(count(drop.team,null));m.added=String(count(pickup.team,next));m.oldppg=oldStats.ppg.toFixed(1);m.newppg=newStats.ppg.toFixed(1);
+  m.autoNote='ESPN: '+drop.team+' '+m.lost+' games lost; '+pickup.team+' '+m.added+' games added'+(next?' (until next drop)':'')+'. '+oldStats.played+'/'+newStats.played+' completed games used for PPG. Verify lineup availability and transaction timing.';
+  drawPlan();el('planStatus').textContent='Auto-filled move '+(i+1)+'. Review usable games and save your plan.';
+ }catch(e){status.textContent='Could not auto-fill: '+e.message+'. You can enter the values manually.'}
+ finally{button.disabled=false}
+}
+const endOfWeek=week=>shiftDate(week,6);
 function calculatePlan(){
  let games=0,points=0,complete=0;for(let i=0;i<Number(plan.count);i++){const m=plan.moves[i];if(!m.date||!m.drop||!m.pickup)continue;complete++;const lost=Number(m.lost)||0,added=Number(m.added)||0;games+=added-lost;points+=added*(Number(m.newppg)||0)-lost*(Number(m.oldppg)||0)}
  el('planGames').textContent=(games>=0?'+':'')+games;el('planPoints').textContent=(points>=0?'+':'')+points.toFixed(1);el('planStatus').dataset.complete=String(complete);
