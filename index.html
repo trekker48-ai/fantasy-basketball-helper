@@ -64,11 +64,16 @@ async function plannerPlayer(name){
 async function plannerAverage(player){
  if(plannerLogCache.has(player.id))return plannerLogCache.get(player.id);
  const year=new Date().getMonth()>=8?new Date().getFullYear()+1:new Date().getFullYear();
- const data=await espnJson('https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/'+encodeURIComponent(player.id)+'/gamelog?season='+year);
- const rows=parseLog(data).filter(r=>r.date<=new Date());
- if(!rows.length)throw Error('No completed game stats for '+player.name);
- const ppg=rows.reduce((sum,r)=>sum+Object.entries(weights).reduce((s,[k,w])=>s+r.stats[k]*w,0),0)/rows.length;
- const result={ppg,played:rows.length};plannerLogCache.set(player.id,result);return result;
+ for(const season of [year,year-1]){
+  try{
+   const data=await espnJson('https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/'+encodeURIComponent(player.id)+'/gamelog?season='+season);
+   const rows=parseLog(data).filter(r=>r.date<=new Date());
+   if(!rows.length)continue;
+   const ppg=rows.reduce((sum,r)=>sum+Object.entries(weights).reduce((s,[k,w])=>s+r.stats[k]*w,0),0)/rows.length;
+   const result={ppg,played:rows.length,season};plannerLogCache.set(player.id,result);return result;
+  }catch(e){/* Try the previous completed season. */}
+ }
+ throw Error('No current or previous-season game stats for '+player.name);
 }
 async function plannerWeekGames(week){
  if(plannerScheduleCache.has(week))return plannerScheduleCache.get(week);
@@ -88,18 +93,25 @@ async function plannerWeekGames(week){
 async function autoFillMove(i,button){
  const m=plan.moves[i],status=el('autoMoveStatus'+i);
  if(!m.date||!m.drop||!m.pickup){status.textContent='Enter a pickup date and both player names first.';return}
- button.disabled=true;status.textContent='Looking up player teams, schedules, and fantasy averages…';
+ button.disabled=true;status.textContent='Looking up players and remaining games…';
  try{
   const [drop,pickup]=await Promise.all([plannerPlayer(m.drop),plannerPlayer(m.pickup)]);
-  const [oldStats,newStats,games]=await Promise.all([plannerAverage(drop),plannerAverage(pickup),plannerWeekGames(el('planWeek').value)]);
-  // A player dropped later in the same plan contributes only until the later transaction.
+  const games=await plannerWeekGames(el('planWeek').value);
   const next=plan.moves.slice(i+1,Number(plan.count)).filter(x=>x.date&&safeName(x.drop)===safeName(m.pickup)).map(x=>x.date).sort()[0];
-  const start=m.date>endOfWeek(el('planWeek').value)?endOfWeek(el('planWeek').value):m.date;
-  const count=(team,stop)=>new Set(games.filter(g=>g.date>=start&&(!stop||g.date<stop)&&g.teams.includes(team)).map(g=>g.date)).size;
-  m.lost=String(count(drop.team,null));m.added=String(count(pickup.team,next));m.oldppg=oldStats.ppg.toFixed(1);m.newppg=newStats.ppg.toFixed(1);
-  m.autoNote='ESPN: '+drop.team+' '+m.lost+' games lost; '+pickup.team+' '+m.added+' games added'+(next?' (until next drop)':'')+'. '+oldStats.played+'/'+newStats.played+' completed games used for PPG. Verify lineup availability and transaction timing.';
-  drawPlan();el('planStatus').textContent='Auto-filled move '+(i+1)+'. Review usable games and save your plan.';
- }catch(e){status.textContent='Could not auto-fill: '+e.message+'. You can enter the values manually.'}
+  const start=m.date;
+  const count=(team,stop)=>games.filter(g=>g.date>=start&&(!stop||g.date<stop)&&g.teams.includes(team)).length;
+  m.lost=String(count(drop.team,null));m.added=String(count(pickup.team,next));
+  m.autoNote='Schedule loaded: '+drop.team+' '+m.lost+' games lost; '+pickup.team+' '+m.added+' games gained. Looking up fantasy averages…';
+  drawPlan();
+  const results=await Promise.allSettled([plannerAverage(drop),plannerAverage(pickup)]);
+  const oldStats=results[0].status==='fulfilled'?results[0].value:null;
+  const newStats=results[1].status==='fulfilled'?results[1].value:null;
+  m.oldppg=oldStats?oldStats.ppg.toFixed(1):'';
+  m.newppg=newStats?newStats.ppg.toFixed(1):'';
+  const desc=(player,stats)=>stats?player.name+' '+stats.ppg.toFixed(1)+' FP/game ('+stats.season+' season, '+stats.played+' games)':player.name+' stats unavailable';
+  m.autoNote='Schedule: '+drop.team+' '+m.lost+' lost, '+pickup.team+' '+m.added+' gained. '+desc(drop,oldStats)+'; '+desc(pickup,newStats)+'. Scheduled games are not guaranteed usable games; check injuries and Yahoo lineup.';
+  drawPlan();el('planStatus').textContent='Move '+(i+1)+' schedule filled'+(oldStats&&newStats?' and fantasy points calculated.':' but some fantasy stats remain unavailable.')+' Review and save.';
+ }catch(e){status.textContent='Could not auto-fill: '+e.message+'. The plan remains editable.'}
  finally{button.disabled=false}
 }
 const endOfWeek=week=>shiftDate(week,6);
