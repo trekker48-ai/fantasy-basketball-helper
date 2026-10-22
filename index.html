@@ -42,10 +42,24 @@ async function loadSchedule(force=false){
  if(!force&&loadedRange===range){showSchedule();return}
  const status=el('scheduleStatus');status.textContent='Loading NBA games for '+dayLabel(start)+' – '+dayLabel(stop)+'…';el('refreshSchedule').disabled=true;
  try{
-  const url='https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates='+start.replaceAll('-','')+'-'+stop.replaceAll('-','')+'&limit=600';
-  const response=await fetch(url,{cache:'no-store'});if(!response.ok)throw Error('HTTP '+response.status);
-  const data=await response.json();if(!Array.isArray(data.events))throw Error('Unexpected response');
-  const parsed=data.events.map(event=>{const sides=event.competitions?.[0]?.competitors||[];const names=sides.map(side=>String(side.team?.abbreviation||'').toUpperCase()).map(v=>teamAliases[v]||v).filter(v=>teams[v]);return {date:String(event.date||'').slice(0,10),teams:names}}).filter(g=>g.date&&g.teams.length===2);
+  // Date ranges now return HTTP 400 on ESPN's site API. Query each calendar month instead.
+  const months=[start.slice(0,7).replace('-','')];
+  if(stop.slice(0,7)!==start.slice(0,7))months.push(stop.slice(0,7).replace('-',''));
+  const results=await Promise.all(months.map(async month=>{
+   const url='https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates='+month+'&limit=600';
+   const response=await fetch(url,{cache:'no-store'});if(!response.ok)throw Error('HTTP '+response.status);
+   const data=await response.json();if(!Array.isArray(data.events))throw Error('Unexpected ESPN response');
+   return data.events;
+  }));
+  const byId=new Map();
+  for(const event of results.flat())byId.set(event.id,event);
+  const parsed=[...byId.values()].map(event=>{
+   const sides=event.competitions?.[0]?.competitors||[];
+   const names=sides.map(side=>String(side.team?.abbreviation||'').toUpperCase()).map(v=>teamAliases[v]||v).filter(v=>teams[v]);
+   // NBA games are scheduled by Eastern Time, which may differ from UTC dates.
+   const date=event.date?new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(event.date)).replace(/^(\\d{2})\/(\\d{2})\/(\\d{4})$/,'$3-$1-$2'):null;
+   return {date,teams:names};
+  }).filter(g=>g.date>=start&&g.date<=stop&&g.teams.length===2);
   if(id!==requestId)return;
   scheduleGames=parsed;loadedRange=range;
   status.textContent=parsed.length?'Loaded '+parsed.length+' NBA games from ESPN · updated '+new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}):'No games found for selected dates. Try another range.';
