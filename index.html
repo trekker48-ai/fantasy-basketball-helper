@@ -8,6 +8,8 @@
 <section class="card"><h2>5. Player fantasy snapshot & trend alerts</h2><p class="sub">On-demand player research: look up verified stats using the links, then enter season and last-7-day averages. Search for a player and try loading free ESPN game logs. If the public feed is unavailable, manual entry still works.</p>
 <label>Player name<input type="text" id="playerSearch" placeholder="e.g. Moussa Diabaté"></label><div class="links"><button type="button" id="findPlayer">Find player</button><button type="button" class="secondary" id="loadPlayer">Load player stats</button></div><div id="playerMatches" class="sub" aria-live="polite"></div><p id="playerDataStatus" class="foot" aria-live="polite">Choose a player to retrieve available ESPN statistics. Manual entry remains available.</p><div class="links"><a id="playerStats" href="https://www.nba.com/stats/players/traditional" target="_blank" rel="noopener">Find season and last-7-day stats ↗</a><a id="playerLineup" href="https://www.rotowire.com/basketball/nba-lineups.php" target="_blank" rel="noopener">Check projected starters ↗</a></div>
 <div class="two" style="margin-top:12px"><label>Season minutes/game<input type="number" id="minutesAvg" min="0" max="48" step="0.1" placeholder="e.g. 26"></label><label>Starting role<select id="starterStatus" style="width:100%;margin-top:5px;padding:10px;border:1px solid #bccad9;border-radius:9px;font-size:1rem"><option value="unknown">Not verified</option><option value="yes">Usually starts</option><option value="no">Usually bench</option><option value="variable">Variable / spot starts</option></select></label></div>
+<div class="score" style="margin-top:12px"><span><strong>Minutes trend: season vs. last 7 days</strong><br><span class="sub" id="minutesComparison">Load player stats to compare playing time</span></span><span class="big" id="minutesDelta">—</span></div>
+<div id="improvementAlerts" class="hint" style="margin-top:10px" aria-live="polite">Improvement watch: load a player to check changes in minutes, points, rebounds, assists, steals, blocks and fantasy scoring.</div>
 <h3 class="small">Season averages (per game)</h3><div class="grid" id="seasonStats"><label>Points<input type="number" id="spts" min="0" step="0.1" placeholder="PTS"></label><label>Rebounds<input type="number" id="sreb" min="0" step="0.1" placeholder="REB"></label><label>Assists<input type="number" id="sast" min="0" step="0.1" placeholder="AST"></label><label>Steals<input type="number" id="sstl" min="0" step="0.1" placeholder="STL"></label><label>Blocks<input type="number" id="sblk" min="0" step="0.1" placeholder="BLK"></label><label>Turnovers<input type="number" id="stov" min="0" step="0.1" placeholder="TO"></label></div>
 <div class="score"><span><strong>Expected fantasy points/game</strong><br><span class="sub">From season averages</span></span><span class="big" id="seasonFP">—</span></div>
 <h3 class="small">Last 7 calendar days (per game)</h3><div class="two"><label>Games played in last 7 days<input type="number" id="recentGames" min="0" max="7" step="1" placeholder="At least 3"></label><label>Last-7 minutes/game<input type="number" id="recentMinutes" min="0" max="48" step="0.1" placeholder="e.g. 32"></label></div>
@@ -184,6 +186,25 @@ function snapshot(){
  if(hasMin){const s=Number(el('minutesAvg').value),r=Number(el('recentMinutes').value),dif=r-s,pct=s>0?dif/s*100:null;if(games<3)role='Too few games to assess a minutes trend (minimum 3).';else if(s<=0)role='Enter a season minutes average above zero.';else if(dif>=5&&pct>=20)role='⚡ ROLE CHANGE ALERT: minutes up '+dif.toFixed(1)+' per game ('+pct.toFixed(1)+'%). Investigate injuries, starts and rotation changes.';else role='Minutes trend: '+(dif>=0?'+':'')+dif.toFixed(1)+' ('+(pct>=0?'+':'')+pct.toFixed(1)+'%). No role-expansion alert.'}
  const status=el('starterStatus').value;if(status!=='unknown')role+=' Starting status entered: '+({yes:'usually starts',no:'usually bench',variable:'variable / spot starts'})[status]+'.';
  el('roleAdvice').textContent=role;
+ const sm=el('minutesAvg').value.trim(),rm=el('recentMinutes').value.trim();
+ if(sm!==''&&rm!==''){
+  const s=Number(sm),r=Number(rm),diff=r-s,pct=s>0?diff/s*100:null;
+  el('minutesComparison').textContent='Season '+s.toFixed(1)+' min/game → Last 7 days '+r.toFixed(1)+' min/game'+(pct!==null?' ('+(pct>=0?'+':'')+pct.toFixed(1)+'%)':'');
+  el('minutesDelta').textContent=(diff>=0?'+':'')+diff.toFixed(1);
+  el('minutesDelta').className='big '+(diff>0?'green':diff<0?'red':'');
+ }else{el('minutesComparison').textContent='Load player stats to compare playing time';el('minutesDelta').textContent='—';el('minutesDelta').className='big'}
+ const signals=[];
+ if(ready&&recent&&games>=3){
+  const labels={pts:'Points',reb:'Rebounds',ast:'Assists',stl:'Steals',blk:'Blocks',tov:'Turnovers'};
+  for(const key of ['pts','reb','ast','stl','blk']){
+   const s=Number(el('s'+key).value),r=Number(el('r'+key).value),delta=r-s;
+   if(s>0&&delta>0&&delta/s>=0.2)signals.push(labels[key]+' +'+(delta/s*100).toFixed(0)+'% ('+s.toFixed(1)+' → '+r.toFixed(1)+')');
+  }
+  if(season>0&&last>season*1.15)signals.unshift('Fantasy points +'+((last/season-1)*100).toFixed(0)+'%');
+ }
+ if(sm!==''&&rm!==''&&games>=3){const s=Number(sm),r=Number(rm);if(s>0&&r-s>=3&&r/s>=1.15)signals.unshift('Minutes +'+((r/s-1)*100).toFixed(0)+'% ('+s.toFixed(1)+' → '+r.toFixed(1)+')')}
+ el('improvementAlerts').textContent=games<3?'Improvement watch: only '+(Number.isFinite(games)?games:0)+' game(s) in the last 7 days. Trends need at least 3 games; the minutes comparison above is still shown.':signals.length?'📈 Improvements detected: '+signals.join(' · ')+'. These are recent signals, not guarantees.':'Improvement watch: no increases above the alert thresholds in the available recent sample.';
+
  try{localStorage.setItem('basketballSnapshotV2',JSON.stringify(Object.fromEntries(snapFields.map(k=>[k,el(k).value]))))}catch(e){}
 }
 try{let saved=JSON.parse(localStorage.getItem('basketballSnapshotV2')||'null');if(saved)snapFields.forEach(k=>{if(saved[k]!=null)el(k).value=saved[k]})}catch(e){}
