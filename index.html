@@ -92,7 +92,7 @@ async function findAthletes(){
   const visit=(node,depth=0)=>{
    if(depth>8||!node||typeof node!=='object')return;
    if(Array.isArray(node)){for(const item of node)visit(item,depth+1);return}
-   const id=node.id||node.uid?.match(/a:(\\d+)/)?.[1];
+   const id=node.id||node.uid?.match(/a:(\d+)/)?.[1];
    const name=node.displayName||node.fullName||node.name;
    if(id&&typeof name==='string'&&safeName(name).includes(safeName(query))&&!seen.has(String(id))){hits.push({id:String(id),name});seen.add(String(id))}
    for(const [key,val] of Object.entries(node))if(key!=='links'&&key!=='images')visit(val,depth+1);
