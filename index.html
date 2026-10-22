@@ -79,7 +79,7 @@ async function plannerWeekGames(week){
  for(const data of results)for(const event of data.events||[])unique.set(event.id,event);
  const games=[...unique.values()].map(event=>{
   const names=(event.competitions?.[0]?.competitors||[]).map(s=>String(s.team?.abbreviation||'').toUpperCase()).map(v=>teamAliases[v]||v);
-  const date=new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(event.date));
+  const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date(event.date));const field=k=>parts.find(p=>p.type===k)?.value;const date=[field('year'),field('month'),field('day')].join('-');
   return {date,teams:names};
  }).filter(g=>g.date>=week&&g.date<=end);
  if(!games.length)throw Error('No NBA games returned for this matchup week');
