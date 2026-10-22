@@ -57,7 +57,9 @@ async function loadSchedule(force=false){
    const sides=event.competitions?.[0]?.competitors||[];
    const names=sides.map(side=>String(side.team?.abbreviation||'').toUpperCase()).map(v=>teamAliases[v]||v).filter(v=>teams[v]);
    // NBA games are scheduled by Eastern Time, which may differ from UTC dates.
-   const date=event.date?new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(event.date)).replace(/^(\\d{2})\/(\\d{2})\/(\\d{4})$/,'$3-$1-$2'):null;
+   const parts=event.date?new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date(event.date)):[];
+   const field=k=>parts.find(p=>p.type===k)?.value;
+   const date=parts.length?[field('year'),field('month'),field('day')].join('-'):null;
    return {date,teams:names};
   }).filter(g=>g.date>=start&&g.date<=stop&&g.teams.length===2);
   if(id!==requestId)return;
