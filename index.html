@@ -104,13 +104,13 @@ async function autoFillMove(i,button){
 }
 const endOfWeek=week=>shiftDate(week,6);
 function calculatePlan(){
- let games=0,points=0,complete=0;for(let i=0;i<Number(plan.count);i++){const m=plan.moves[i];if(!m.date||!m.drop||!m.pickup)continue;complete++;const lost=Number(m.lost)||0,added=Number(m.added)||0;games+=added-lost;points+=added*(Number(m.newppg)||0)-lost*(Number(m.oldppg)||0)}
- el('planGames').textContent=(games>=0?'+':'')+games;el('planPoints').textContent=(points>=0?'+':'')+points.toFixed(1);el('planStatus').dataset.complete=String(complete);
+ let games=0,points=0,complete=0,missing=0;for(let i=0;i<Number(plan.count);i++){const m=plan.moves[i];if(!m.date&&!m.drop&&!m.pickup)continue;if(!m.date||!m.drop||!m.pickup||['lost','added','oldppg','newppg'].some(k=>m[k]===''||m[k]===undefined)){missing++;continue}complete++;const lost=Number(m.lost),added=Number(m.added);games+=added-lost;points+=added*Number(m.newppg)-lost*Number(m.oldppg)}
+ el('planGames').textContent=missing||!complete?'—':(games>=0?'+':'')+games;el('planPoints').textContent=missing||!complete?'—':(points>=0?'+':'')+points.toFixed(1);el('planStatus').dataset.complete=String(complete);
 }
 el('planWeek').value=mondayOf(localDate(new Date()));loadPlan();
 el('planWeek').addEventListener('change',()=>{if(el('planWeek').value){el('planWeek').value=mondayOf(el('planWeek').value);loadPlan()}});
 el('planCount').addEventListener('change',()=>{plan.count=Number(el('planCount').value);drawPlan();el('planStatus').textContent='Unsaved changes — tap Save / finish plan.'});
-el('savePlan').onclick=()=>{calculatePlan();try{localStorage.setItem(planKey(),JSON.stringify(plan));el('planStatus').textContent='Saved '+el('planStatus').dataset.complete+' planned move(s) for week of '+el('planWeek').value+'.'}catch(e){el('planStatus').textContent='Could not save on this device: '+e.message}};
+el('savePlan').onclick=()=>{calculatePlan();try{localStorage.setItem(planKey(),JSON.stringify(plan));el('planStatus').textContent='Saved '+el('planStatus').dataset.complete+' calculated move(s) for week of '+el('planWeek').value+'. Incomplete moves show — until stats are entered.'}catch(e){el('planStatus').textContent='Could not save on this device: '+e.message}};
 el('resetPlan').onclick=()=>{plan=planDefault();el('planCount').value='2';localStorage.removeItem(planKey());drawPlan();el('planStatus').textContent='Cleared this week’s plan.'};
 
 // NBA schedule look-ahead (free ESPN public feed).
