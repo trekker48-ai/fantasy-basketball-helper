@@ -5,8 +5,8 @@
 <section class="card"><h2>2. Should I stream this player?</h2><p class="sub">Compare the fantasy points you expect from the player you'd drop with those from the available pickup. Enter games you can actually fit into an active lineup slot.</p><div class="two"><div><strong>Current player</strong><label>Fantasy pts/game<input id="oldppg" type="number" min="0" step="0.1" value="26"></label><label>Usable games left<input id="oldgames" type="number" min="0" max="7" step="1" value="1"></label></div><div><strong>Available player</strong><label>Fantasy pts/game<input id="newppg" type="number" min="0" step="0.1" value="24"></label><label>Usable games left<input id="newgames" type="number" min="0" max="7" step="1" value="3"></label></div></div><hr><div class="row"><span>Keep current player</span><strong id="keep">26.0</strong></div><div class="row"><span>Pick up replacement</span><strong id="add">72.0</strong></div><div class="score"><span><strong>Projected weekly difference</strong><br><span class="sub">Before considering long-term roster value</span></span><span class="big green" id="gain">+46.0</span></div><p id="advice" class="hint"></p><p class="foot">A positive result is not an automatic add. Check waivers, injury status, minutes, positional eligibility, loss of the dropped player, and whether this uses one of your four weekly pickups.</p></section>
 <section class="card"><h2>3. Weekly pickup tracker</h2><p class="sub">Your league allows four additions per matchup week (Monday–Sunday).</p><div class="row"><span>Moves used this week</span><span><button class="secondary" id="minus" aria-label="One fewer move">−</button> <strong id="used" style="display:inline-block;min-width:30px;text-align:center">2</strong> <button class="secondary" id="plus" aria-label="One more move">+</button></span></div><div class="score"><span>Remaining pickups</span><span id="left" class="big">2</span></div><div class="row"><span class="foot">Reset when a new Yahoo matchup week starts.</span><button class="secondary" id="resetmoves">New week: reset to 0</button></div></section>
 <section class="card"><h2>4. NBA team schedule & game days</h2><p class="sub">Look ahead at upcoming NBA games. Live schedule data is fetched from ESPN's free public scoreboard feed; no account or API key required.</p><div class="two"><label>From date<input type="date" id="fromDay"></label><label>Look ahead<select id="scheduleWindow" style="width:100%;margin-top:5px;padding:10px;border:1px solid #bccad9;border-radius:9px;font-size:1rem"><option value="7">7 days</option><option value="14" selected>14 days</option><option value="28">28 days</option></select></label></div><div class="two" style="margin-top:10px"><label>Filter team<input id="scheduleFilter" type="text" placeholder="e.g. DET or Pistons"></label><div style="display:flex;align-items:end"><button id="refreshSchedule" type="button">Refresh schedule</button></div></div><p id="scheduleStatus" class="foot" aria-live="polite">Loading schedule…</p><div class="row"><strong id="scheduleTitle">Upcoming games by team</strong><button class="secondary" id="resetFilter">All teams</button></div><div class="schedule-list" id="teamSchedule"></div><p class="foot">Tap a team's game count to fill the streaming calculator. For Yahoo, count only games that can fit in your starting lineup. The ESPN feed is unofficial and may temporarily be unavailable.</p><div class="links"><a href="https://www.nba.com/schedule" target="_blank" rel="noopener">Official NBA schedule ↗</a></div></section>
-<section class="card"><h2>5. Player fantasy snapshot & trend alerts</h2><p class="sub">On-demand player research: look up verified stats using the links, then enter season and last-7-day averages. This offline app calculates fantasy value and flags recent changes; it does <strong>not</strong> automatically fetch player data.</p>
-<label>Player name<input type="text" id="playerSearch" placeholder="e.g. Moussa Diabaté"></label><div class="links"><a id="playerStats" href="https://www.nba.com/stats/players/traditional" target="_blank" rel="noopener">Find season and last-7-day stats ↗</a><a id="playerLineup" href="https://www.rotowire.com/basketball/nba-lineups.php" target="_blank" rel="noopener">Check projected starters ↗</a></div>
+<section class="card"><h2>5. Player fantasy snapshot & trend alerts</h2><p class="sub">On-demand player research: look up verified stats using the links, then enter season and last-7-day averages. Search for a player and try loading free ESPN game logs. If the public feed is unavailable, manual entry still works.</p>
+<label>Player name<input type="text" id="playerSearch" placeholder="e.g. Moussa Diabaté"></label><div class="links"><button type="button" id="findPlayer">Find player</button><button type="button" class="secondary" id="loadPlayer">Load player stats</button></div><div id="playerMatches" class="sub" aria-live="polite"></div><p id="playerDataStatus" class="foot" aria-live="polite">Choose a player to retrieve available ESPN statistics. Manual entry remains available.</p><div class="links"><a id="playerStats" href="https://www.nba.com/stats/players/traditional" target="_blank" rel="noopener">Find season and last-7-day stats ↗</a><a id="playerLineup" href="https://www.rotowire.com/basketball/nba-lineups.php" target="_blank" rel="noopener">Check projected starters ↗</a></div>
 <div class="two" style="margin-top:12px"><label>Season minutes/game<input type="number" id="minutesAvg" min="0" max="48" step="0.1" placeholder="e.g. 26"></label><label>Starting role<select id="starterStatus" style="width:100%;margin-top:5px;padding:10px;border:1px solid #bccad9;border-radius:9px;font-size:1rem"><option value="unknown">Not verified</option><option value="yes">Usually starts</option><option value="no">Usually bench</option><option value="variable">Variable / spot starts</option></select></label></div>
 <h3 class="small">Season averages (per game)</h3><div class="grid" id="seasonStats"><label>Points<input type="number" id="spts" min="0" step="0.1" placeholder="PTS"></label><label>Rebounds<input type="number" id="sreb" min="0" step="0.1" placeholder="REB"></label><label>Assists<input type="number" id="sast" min="0" step="0.1" placeholder="AST"></label><label>Steals<input type="number" id="sstl" min="0" step="0.1" placeholder="STL"></label><label>Blocks<input type="number" id="sblk" min="0" step="0.1" placeholder="BLK"></label><label>Turnovers<input type="number" id="stov" min="0" step="0.1" placeholder="TO"></label></div>
 <div class="score"><span><strong>Expected fantasy points/game</strong><br><span class="sub">From season averages</span></span><span class="big" id="seasonFP">—</span></div>
@@ -76,6 +76,73 @@ el('scheduleFilter').addEventListener('input',showSchedule);
 el('resetFilter').onclick=()=>{el('scheduleFilter').value='';showSchedule()};
 el('refreshSchedule').onclick=()=>loadSchedule(true);
 loadSchedule();
+// Free ESPN player research. Public, unofficial endpoints can change or restrict browser access.
+let selectedAthlete=null;
+const espnJson=async url=>{const response=await fetch(url,{cache:'no-store'});if(!response.ok)throw Error('ESPN HTTP '+response.status);return response.json()};
+const statusPlayer=message=>{el('playerDataStatus').textContent=message};
+const safeName=v=>String(v||'').trim().toLowerCase().replace(/[^a-z0-9]/g,'');
+async function findAthletes(){
+ const query=el('playerSearch').value.trim();if(query.length<3){statusPlayer('Enter at least 3 letters of a player name.');return}
+ selectedAthlete=null;el('playerMatches').replaceChildren();statusPlayer('Searching ESPN player directory…');
+ try{
+  // ESPN search responses may change. Match athletes by explicit name and ID only.
+  const data=await espnJson('https://site.api.espn.com/apis/common/v3/search?query='+encodeURIComponent(query)+'&limit=30');
+  const hits=[];
+  const seen=new Set();
+  const visit=(node,depth=0)=>{
+   if(depth>8||!node||typeof node!=='object')return;
+   if(Array.isArray(node)){for(const item of node)visit(item,depth+1);return}
+   const id=node.id||node.uid?.match(/a:(\d+)/)?.[1];
+   const name=node.displayName||node.fullName||node.name;
+   if(id&&typeof name==='string'&&safeName(name).includes(safeName(query))&&!seen.has(String(id))){hits.push({id:String(id),name});seen.add(String(id))}
+   for(const [key,val] of Object.entries(node))if(key!=='links'&&key!=='images')visit(val,depth+1);
+  };visit(data);
+  if(!hits.length)throw Error('No matching player returned by the free search feed');
+  const root=el('playerMatches');root.replaceChildren();
+  for(const athlete of hits.slice(0,12)){const button=document.createElement('button');button.type='button';button.className='secondary';button.style.margin='5px 5px 0 0';button.textContent=athlete.name;button.onclick=()=>{selectedAthlete=athlete;el('playerSearch').value=athlete.name;statusPlayer('Selected '+athlete.name+'. Tap Load player stats.');snapshot()};root.append(button)}
+  statusPlayer('Select the correct player, then load statistics.');
+ }catch(error){statusPlayer('Automatic player search unavailable: '+error.message+'. You can continue entering statistics manually.')}
+}
+const statKeys=['pts','reb','ast','stl','blk','tov'];
+function readStats(obj){
+ const labels={pts:['PTS','points'],reb:['REB','rebounds'],ast:['AST','assists'],stl:['STL','steals'],blk:['BLK','blocks'],tov:['TO','turnovers']};
+ const out={};for(const [key,names] of Object.entries(labels)){const raw=names.map(n=>obj?.[n]).find(v=>v!==undefined&&v!==null);if(raw===undefined||!Number.isFinite(Number(raw)))return null;out[key]=Number(raw)}return out;
+}
+function parseLog(data){
+ // ESPN gamelog includes labels and aligned stats arrays. Never invent missing columns.
+ const labels=data.labels||data.names||[];
+ const groups=data.events||data.entries||{};
+ const rows=Array.isArray(groups)?groups:Object.values(groups).flatMap(v=>Array.isArray(v)?v:[]);
+ const result=[];
+ for(const row of rows){const vals=row.stats||row.statistics;if(!Array.isArray(vals)||!Array.isArray(labels))continue;
+  const obj={};labels.forEach((name,i)=>obj[String(name).toUpperCase()]=vals[i]);
+  const stats=readStats(obj);if(!stats)continue;
+  const date=row.date||row.gameDate||data.events?.[row.eventId]?.gameDate;
+  if(!date||Number.isNaN(Date.parse(date)))continue;
+  const minutes=Number(obj.MIN);result.push({date:new Date(date),stats,minutes:Number.isFinite(minutes)?minutes:null});
+ }return result;
+}
+async function loadAthlete(){
+ if(!selectedAthlete){statusPlayer('Select a player using Find player first.');return}
+ const id=selectedAthlete.id;statusPlayer('Loading '+selectedAthlete.name+' game log…');el('loadPlayer').disabled=true;
+ try{
+  const season=new Date().getMonth()>=8?new Date().getFullYear()+1:new Date().getFullYear();
+  const data=await espnJson('https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/'+encodeURIComponent(id)+'/gamelog?season='+season);
+  const rows=parseLog(data).filter(r=>r.date<=new Date());
+  if(!rows.length)throw Error('No compatible dated box-score rows in ESPN response');
+  const cutoff=new Date();cutoff.setDate(cutoff.getDate()-7);
+  const recent=rows.filter(r=>r.date>=cutoff);
+  const avg=(items,key)=>items.reduce((sum,row)=>sum+row.stats[key],0)/items.length;
+  for(const key of statKeys){el('s'+key).value=avg(rows,key).toFixed(2);el('r'+key).value=recent.length?avg(recent,key).toFixed(2):''}
+  el('recentGames').value=recent.length;
+  const mins=items=>items.length&&items.every(r=>r.minutes!==null)?(items.reduce((sum,r)=>sum+r.minutes,0)/items.length).toFixed(1):'';
+  el('minutesAvg').value=mins(rows);el('recentMinutes').value=mins(recent);
+  snapshot();statusPlayer('Loaded '+rows.length+' dated games for '+selectedAthlete.name+'; '+recent.length+' in the last 7 days. Check ESPN before relying on decisions.');
+ }catch(error){statusPlayer('Could not safely import stats: '+error.message+'. Manual entry is still available.')}
+ finally{el('loadPlayer').disabled=false}
+}
+el('findPlayer').onclick=findAthletes;
+el('loadPlayer').onclick=loadAthlete;
 const snapFields=['playerSearch','minutesAvg','starterStatus','recentGames','recentMinutes',...['pts','reb','ast','stl','blk','tov'].flatMap(x=>['s'+x,'r'+x])];
 function complete(prefix){return ['pts','reb','ast','stl','blk','tov'].every(k=>el(prefix+k).value.trim()!=='')}
 function fpAverage(prefix){return Object.entries(weights).reduce((sum,[k,v])=>sum+v*Number(el(prefix+k).value),0)}
