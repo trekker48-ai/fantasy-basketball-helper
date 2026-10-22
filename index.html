@@ -81,27 +81,33 @@ let selectedAthlete=null;
 const espnJson=async url=>{const response=await fetch(url,{cache:'no-store'});if(!response.ok)throw Error('ESPN HTTP '+response.status);return response.json()};
 const statusPlayer=message=>{el('playerDataStatus').textContent=message};
 const safeName=v=>String(v||'').trim().toLowerCase().replace(/[^a-z0-9]/g,'');
+// Build a searchable directory from ESPN's NBA team rosters, not its general search feed.
+let rosterDirectory=null;
 async function findAthletes(){
  const query=el('playerSearch').value.trim();if(query.length<3){statusPlayer('Enter at least 3 letters of a player name.');return}
- selectedAthlete=null;el('playerMatches').replaceChildren();statusPlayer('Searching ESPN player directory…');
+ selectedAthlete=null;el('playerMatches').replaceChildren();statusPlayer('Searching NBA team rosters for '+query+'…');
  try{
-  // ESPN search responses may change. Match athletes by explicit name and ID only.
-  const data=await espnJson('https://site.api.espn.com/apis/common/v3/search?query='+encodeURIComponent(query)+'&limit=30');
-  const hits=[];
-  const seen=new Set();
-  const visit=(node,depth=0)=>{
-   if(depth>8||!node||typeof node!=='object')return;
-   if(Array.isArray(node)){for(const item of node)visit(item,depth+1);return}
-   const id=node.id||node.uid?.match(/a:(\d+)/)?.[1];
-   const name=node.displayName||node.fullName||node.name;
-   if(id&&typeof name==='string'&&safeName(name).includes(safeName(query))&&!seen.has(String(id))){hits.push({id:String(id),name});seen.add(String(id))}
-   for(const [key,val] of Object.entries(node))if(key!=='links'&&key!=='images')visit(val,depth+1);
-  };visit(data);
-  if(!hits.length)throw Error('No matching player returned by the free search feed');
+  if(!rosterDirectory){
+   const codes=Object.keys(teams);const collected=[];let succeeded=0;
+   // Query team rosters in batches to avoid flooding ESPN.
+   for(let i=0;i<codes.length;i+=6){
+    const batch=await Promise.allSettled(codes.slice(i,i+6).map(async code=>{
+     const data=await espnJson('https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/'+code.toLowerCase()+'/roster');
+     const list=Array.isArray(data.athletes)?data.athletes.flatMap(v=>Array.isArray(v.items)?v.items:[v]):[];
+     return list.filter(p=>p&&p.id&&(p.displayName||p.fullName)).map(p=>({id:String(p.id),name:p.displayName||p.fullName,team:code}));
+    }));
+    for(const result of batch)if(result.status==='fulfilled'){succeeded++;collected.push(...result.value)}
+   }
+   if(!succeeded)throw Error('ESPN roster service did not respond');
+   rosterDirectory=[...new Map(collected.map(p=>[p.id,p])).values()];
+  }
+  const term=safeName(query);
+  const hits=rosterDirectory.filter(p=>safeName(p.name).includes(term)).slice(0,12);
+  if(!hits.length)throw Error('No matching player found in '+rosterDirectory.length+' NBA roster entries');
   const root=el('playerMatches');root.replaceChildren();
-  for(const athlete of hits.slice(0,12)){const button=document.createElement('button');button.type='button';button.className='secondary';button.style.margin='5px 5px 0 0';button.textContent=athlete.name;button.onclick=()=>{selectedAthlete=athlete;el('playerSearch').value=athlete.name;statusPlayer('Selected '+athlete.name+'. Tap Load player stats.');snapshot()};root.append(button)}
-  statusPlayer('Select the correct player, then load statistics.');
- }catch(error){statusPlayer('Automatic player search unavailable: '+error.message+'. You can continue entering statistics manually.')}
+  for(const athlete of hits){const button=document.createElement('button');button.type='button';button.className='secondary';button.style.margin='5px 5px 0 0';button.textContent=athlete.name+' ('+athlete.team+')';button.onclick=()=>{selectedAthlete=athlete;el('playerSearch').value=athlete.name;statusPlayer('Selected '+athlete.name+'. Now tap Load player stats.');snapshot()};root.append(button)}
+  statusPlayer('Select the correct player, then tap Load player stats.');
+ }catch(error){statusPlayer('Player lookup unavailable: '+error.message+'. Manual statistics entry is still available.')}
 }
 const statKeys=['pts','reb','ast','stl','blk','tov'];
 function readStats(obj){
